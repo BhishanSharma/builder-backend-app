@@ -5,7 +5,7 @@ import (
     "builder.ai/src/handlers"
 )
 
-func UserRoutes(r *gin.Engine) {
+func SetupUserRoutes(r *gin.Engine) {
     userHandler := handlers.NewUserHandler()
     
     api := r.Group("/api/v1")

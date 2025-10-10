@@ -8,7 +8,11 @@ import (
 
 func main() {
     config.ConnectDB()
+    
     r := gin.Default()
-    routes.UserRoutes(r)
-    r.Run(":8080")
+    
+    routes.SetupUserRoutes(r)
+    routes.SetupComponentRoutes(r)
+
+    r.Run("localhost:8080")
 }

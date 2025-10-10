@@ -8,6 +8,7 @@ import (
 
 func main() {
     config.ConnectDB()
+    config.CreateIndexes()
     
     r := gin.Default()
     

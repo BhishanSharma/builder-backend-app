@@ -14,6 +14,7 @@ func main() {
     
     routes.SetupUserRoutes(r)
     routes.SetupComponentRoutes(r)
+    routes.SetupStageRoutes(r)
 
     r.Run("localhost:8080")
 }

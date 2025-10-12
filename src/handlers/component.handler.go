@@ -1,3 +1,4 @@
+// handlers/component.handler.go
 package handlers
 
 import (
@@ -32,20 +33,29 @@ func (h *ComponentHandler) GetAll(c *gin.Context) {
 
     var components []models.Component
 
-    // Optional filter by stage
+    // Optional filters
     filter := bson.M{}
-    stage := c.Query("stage")
-    if stage != "" {
+    
+    if stage := c.Query("stage"); stage != "" {
         filter["stage"] = stage
     }
-
-    // Optional filter by language
-    language := c.Query("language")
-    if language != "" {
+    
+    if language := c.Query("language"); language != "" {
         filter["language"] = language
     }
+    
+    // Filter by output type
+    if outputType := c.Query("output_type"); outputType != "" {
+        filter["output.type"] = outputType
+    }
+    
+    // Filter components with/without output
+    if hasOutput := c.Query("has_output"); hasOutput == "true" {
+        filter["output"] = bson.M{"$ne": nil}
+    } else if hasOutput == "false" {
+        filter["output"] = nil
+    }
 
-    // Sort by created_at descending
     opts := options.Find().SetSort(bson.D{{Key: "created_at", Value: -1}})
 
     cursor, err := h.collection.Find(ctx, filter, opts)
@@ -99,7 +109,6 @@ func (h *ComponentHandler) GetByStage(c *gin.Context) {
 
     stage := c.Param("stage")
     
-    // Validate stage
     validStages := []string{"stage1", "stage2", "stage3", "stage4"}
     isValid := false
     for _, s := range validStages {
@@ -151,7 +160,24 @@ func (h *ComponentHandler) Create(c *gin.Context) {
         return
     }
 
-    // Set timestamps
+    // Validate input types
+    if !component.ValidateInputTypes() {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input type. Must be string, int, float, bool, list, dict, or any"})
+        return
+    }
+
+    // Validate output type
+    if !component.ValidateOutputType() {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid output type. Must be string, int, float, bool, list, dict, any, or none"})
+        return
+    }
+
+    // Validate at least one input
+    if len(component.Inputs) == 0 {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "Component must have at least one input"})
+        return
+    }
+
     component.CreatedAt = time.Now()
     component.UpdatedAt = time.Now()
 
@@ -187,13 +213,26 @@ func (h *ComponentHandler) Update(c *gin.Context) {
         return
     }
 
-    // Validate stage
     if !component.IsValidStage() {
-        c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid stage. Must be stage1, stage2, stage3, or stage4"})
+        c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid stage"})
         return
     }
 
-    // Update timestamp
+    if !component.ValidateInputTypes() {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input type"})
+        return
+    }
+
+    if !component.ValidateOutputType() {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid output type"})
+        return
+    }
+
+    if len(component.Inputs) == 0 {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "Component must have at least one input"})
+        return
+    }
+
     component.UpdatedAt = time.Now()
 
     update := bson.M{
@@ -204,6 +243,8 @@ func (h *ComponentHandler) Update(c *gin.Context) {
             "language":    component.Language,
             "stage":       component.Stage,
             "tags":        component.Tags,
+            "inputs":      component.Inputs,
+            "output":      component.Output,
             "updated_at":  component.UpdatedAt,
         },
     }
@@ -267,7 +308,6 @@ func (h *ComponentHandler) SearchByName(c *gin.Context) {
 
     var components []models.Component
 
-    // Case-insensitive search
     filter := bson.M{"name": bson.M{"$regex": name, "$options": "i"}}
     cursor, err := h.collection.Find(ctx, filter)
     if err != nil {
@@ -319,5 +359,71 @@ func (h *ComponentHandler) GetStageStats(c *gin.Context) {
 
     c.JSON(http.StatusOK, gin.H{
         "stats": results,
+    })
+}
+
+// GetByInputType finds components that accept a specific input type
+func (h *ComponentHandler) GetByInputType(c *gin.Context) {
+    ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+    defer cancel()
+
+    inputType := c.Query("type")
+    if inputType == "" {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "Type query parameter is required"})
+        return
+    }
+
+    var components []models.Component
+
+    filter := bson.M{"inputs.type": inputType}
+    cursor, err := h.collection.Find(ctx, filter)
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+        return
+    }
+    defer cursor.Close(ctx)
+
+    if err = cursor.All(ctx, &components); err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+        return
+    }
+
+    c.JSON(http.StatusOK, gin.H{
+        "input_type": inputType,
+        "count":      len(components),
+        "components": components,
+    })
+}
+
+// GetByOutputType finds components with a specific output type
+func (h *ComponentHandler) GetByOutputType(c *gin.Context) {
+    ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+    defer cancel()
+
+    outputType := c.Query("type")
+    if outputType == "" {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "Type query parameter is required"})
+        return
+    }
+
+    var components []models.Component
+
+    filter := bson.M{"output.type": outputType}
+    cursor, err := h.collection.Find(ctx, filter)
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+        return
+    }
+    defer cursor.Close(ctx)
+
+    if err = cursor.All(ctx, &components); err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+        return
+    }
+
+    c.JSON(http.StatusOK, gin.H{
+        "output_type": outputType,
+        "count":       len(components),
+        "components":  components,
     })
 }

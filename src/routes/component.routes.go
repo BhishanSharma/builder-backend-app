@@ -19,9 +19,6 @@ func SetupComponentRoutes(r *gin.Engine) {
             components.DELETE("/:id", componentHandler.Delete)       // Delete
             components.GET("/search", componentHandler.SearchByName) // Search
             components.GET("/stats", componentHandler.GetStageStats) // Get stats
-        }
-        
-        // Get components by stage
-        api.GET("/stages/:stage/components", componentHandler.GetByStage)
+        }    
     }
 }

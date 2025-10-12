@@ -15,6 +15,6 @@ func main() {
     routes.SetupUserRoutes(r)
     routes.SetupComponentRoutes(r)
     routes.SetupStageRoutes(r)
-
+    routes.SetupWorkflowRoutes(r)
     r.Run("localhost:8080")
 }

@@ -3,7 +3,6 @@ package handlers
 
 import (
     "bytes"
-    "context"
     "fmt"
     "net/http"
     "os"
@@ -13,12 +12,9 @@ import (
     "time"
 
     "github.com/gin-gonic/gin"
-    "go.mongodb.org/mongo-driver/bson"
-    "go.mongodb.org/mongo-driver/bson/primitive"
     "go.mongodb.org/mongo-driver/mongo"
 
     "builder.ai/config"
-    "builder.ai/src/models"
 )
 
 type WorkflowHandler struct {
@@ -31,13 +27,21 @@ func NewWorkflowHandler() *WorkflowHandler {
     }
 }
 
-type WorkflowItem struct {
-    Type  string `json:"type" binding:"required,oneof=id code"` 
-    Value string `json:"value" binding:"required"`              
+// Variable represents a single variable with name and value
+type Variable struct {
+    Name  string `json:"name"`
+    Value string `json:"value"`
 }
 
+// CodeItem represents a code block with its variables
+type CodeItem struct {
+    Code      string     `json:"code" binding:"required"`
+    Variables []Variable `json:"variables"`
+}
+
+// ConcatenateRequest is the request payload for running workflow code
 type ConcatenateRequest struct {
-    Items []WorkflowItem `json:"items" binding:"required,min=1"`
+    Items []CodeItem `json:"items" binding:"required,min=1"`
 }
 
 func (h *WorkflowHandler) RunCode(c *gin.Context) {
@@ -48,64 +52,38 @@ func (h *WorkflowHandler) RunCode(c *gin.Context) {
         return
     }
 
-    // No timeout for database queries - let them run as long as needed
-    ctx := context.Background()
-
     var codeBlocks []string
     var componentDetails []map[string]interface{}
 
     // Process each item in order
     for i, item := range request.Items {
-        if item.Type == "id" {
-            // It's a component ID - fetch from database
-            objectID, err := primitive.ObjectIDFromHex(item.Value)
-            if err != nil {
-                c.JSON(http.StatusBadRequest, gin.H{
-                    "error": fmt.Sprintf("Invalid ID format at index %d: %s", i, item.Value),
-                })
-                return
-            }
-
-            var component models.Component
-            err = h.collection.FindOne(ctx, bson.M{"_id": objectID}).Decode(&component)
-            if err != nil {
-                if err == mongo.ErrNoDocuments {
-                    c.JSON(http.StatusNotFound, gin.H{
-                        "error": fmt.Sprintf("Component not found at index %d: %s", i, item.Value),
-                    })
-                    return
-                }
-                c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-                return
-            }
-
-            // Add component code to blocks
-            codeBlocks = append(codeBlocks, component.Code)
-            
-            // Store component details
-            componentDetails = append(componentDetails, map[string]interface{}{
-                "index":       i,
-                "type":        "component",
-                "id":          component.ID.Hex(),
-                "name":        component.Name,
-                "description": component.Description,
-                "stage":       component.Stage,
-                "language":    component.Language,
-                "inputs":      component.Inputs,
-                "output":      component.Output,
+        if item.Code == "" {
+            c.JSON(http.StatusBadRequest, gin.H{
+                "error": fmt.Sprintf("Empty code at index %d", i),
             })
-
-        } else {
-            // It's raw code
-            codeBlocks = append(codeBlocks, item.Value)
-            
-            // Store raw code details
-            componentDetails = append(componentDetails, map[string]interface{}{
-                "index": i,
-                "type":  "raw_code",
-                "code":  item.Value,
-            })
+            return
         }
+
+        // Start with the original code
+        processedCode := item.Code
+
+        // Replace variables in the code
+        for _, variable := range item.Variables {
+            // Replace placeholders like {{variable_name}} with actual values
+            placeholder := fmt.Sprintf("{{%s}}", variable.Name)
+            processedCode = strings.ReplaceAll(processedCode, placeholder, variable.Value)
+        }
+
+        // Add processed code to blocks
+        codeBlocks = append(codeBlocks, processedCode)
+        
+        // Store component details
+        componentDetails = append(componentDetails, map[string]interface{}{
+            "index":     i,
+            "code":      item.Code,
+            "variables": item.Variables,
+            "processed": processedCode,
+        })
     }
 
     // Concatenate all code blocks
@@ -133,7 +111,7 @@ func (h *WorkflowHandler) RunCode(c *gin.Context) {
     if executionError != nil {
         response["execution"].(gin.H)["error"] = executionError.Error()
         response["message"] = "Code execution failed"
-        c.JSON(http.StatusOK, response) // Still return 200 with error details
+        c.JSON(http.StatusOK, response)
         return
     }
 

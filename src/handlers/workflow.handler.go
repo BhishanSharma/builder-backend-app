@@ -45,39 +45,50 @@ type ConcatenateRequest struct {
 }
 
 func (h *WorkflowHandler) RunCode(c *gin.Context) {
-    var request ConcatenateRequest
-    
+    var request struct {
+        Items []CodeItem `json:"items" binding:"required,min=1"`
+        Data  struct {
+            Schema string `json:"schema"` // raw CSV string
+        } `json:"data"`
+    }
+
     if err := c.ShouldBindJSON(&request); err != nil {
         c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
         return
     }
 
+    projectDir, err := os.Getwd() // get current project directory
+    if err != nil {
+        fmt.Println("Error getting project directory:", err)
+        projectDir = "." // fallback to current directory
+    }
+
+    csvFile := filepath.Join(projectDir, fmt.Sprintf("temp/workflow_%d.csv", time.Now().Unix()))
+    if request.Data.Schema != "" {
+        err := os.WriteFile(csvFile, []byte(request.Data.Schema), 0644)
+        if err != nil {
+            fmt.Println("Error saving CSV:", err)
+        } else {
+            fmt.Println("CSV saved at:", csvFile)
+        }
+    }
+
+    // Process code items as before...
     var codeBlocks []string
     var componentDetails []map[string]interface{}
-
-    // Process each item in order
     for i, item := range request.Items {
         if item.Code == "" {
-            c.JSON(http.StatusBadRequest, gin.H{
-                "error": fmt.Sprintf("Empty code at index %d", i),
-            })
+            c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("Empty code at index %d", i)})
             return
         }
 
-        // Start with the original code
         processedCode := item.Code
-
-        // Replace variables in the code
         for _, variable := range item.Variables {
-            // Replace placeholders like {{variable_name}} with actual values
             placeholder := fmt.Sprintf("{{%s}}", variable.Name)
             processedCode = strings.ReplaceAll(processedCode, placeholder, variable.Value)
         }
 
-        // Add processed code to blocks
         codeBlocks = append(codeBlocks, processedCode)
-        
-        // Store component details
         componentDetails = append(componentDetails, map[string]interface{}{
             "index":     i,
             "code":      item.Code,
@@ -86,23 +97,15 @@ func (h *WorkflowHandler) RunCode(c *gin.Context) {
         })
     }
 
-    // Concatenate all code blocks
     concatenatedCode := strings.Join(codeBlocks, "\n\n")
-
-    // Print to console
-    fmt.Println("========== CONCATENATED CODE ==========")
-    fmt.Println(concatenatedCode)
-    fmt.Println("========================================")
-
-    // Execute code in Docker container
     output, executionError := executeInDocker(concatenatedCode)
 
-    // Return response
     response := gin.H{
         "message":           "Code executed successfully",
         "total_items":       len(request.Items),
         "concatenated_code": concatenatedCode,
         "components":        componentDetails,
+        "csv_file":          csvFile,
         "execution": gin.H{
             "output": output,
         },
@@ -111,8 +114,6 @@ func (h *WorkflowHandler) RunCode(c *gin.Context) {
     if executionError != nil {
         response["execution"].(gin.H)["error"] = executionError.Error()
         response["message"] = "Code execution failed"
-        c.JSON(http.StatusOK, response)
-        return
     }
 
     c.JSON(http.StatusOK, response)

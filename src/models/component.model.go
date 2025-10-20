@@ -1,8 +1,10 @@
 package models
 
 import (
-    "time"
-    "go.mongodb.org/mongo-driver/bson/primitive"
+	"fmt"
+	"time"
+
+	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 // ComponentInput represents an input parameter for a component
@@ -52,6 +54,12 @@ const (
     TypeList    = "list"
     TypeDict    = "dict"
     TypeAny     = "any"
+    TypeDataFrame = "DataFrame"
+    TypeSeries   = "Series"
+    TypeTuple   = "tuple"
+    TypeArray   = "array"
+    TypeObject  = "object"
+    TypeIterable = "iterable"
     TypeNone    = "none"
 )
 
@@ -111,7 +119,7 @@ func (c *Component) GetOptionalInputs() []ComponentInput {
 
 // ValidateInputTypes checks if input types are valid
 func (c *Component) ValidateInputTypes() bool {
-    validTypes := []string{TypeString, TypeInt, TypeFloat, TypeBool, TypeList, TypeDict, TypeAny}
+    validTypes := []string{TypeString, TypeInt, TypeFloat, TypeBool, TypeList, TypeDict, TypeDataFrame, TypeSeries, TypeTuple, TypeArray, TypeObject, TypeIterable, TypeAny}
     for _, input := range c.Inputs {
         isValid := false
         for _, validType := range validTypes {
@@ -121,6 +129,7 @@ func (c *Component) ValidateInputTypes() bool {
             }
         }
         if !isValid {
+            fmt.Println("❌ Invalid Input Type:", input.Type)
             return false
         }
     }

@@ -5,7 +5,9 @@ import (
     "context"
     "net/http"
     "time"
-
+    "fmt"
+    "io"
+    "encoding/json"
     "github.com/gin-gonic/gin"
     "go.mongodb.org/mongo-driver/bson"
     "go.mongodb.org/mongo-driver/bson/primitive"
@@ -143,56 +145,83 @@ func (h *ComponentHandler) GetByStage(c *gin.Context) {
     })
 }
 
-// Create creates a new component
+// Create creates one or more new components
 func (h *ComponentHandler) Create(c *gin.Context) {
-    ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-    defer cancel()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 
-    var component models.Component
-    if err := c.ShouldBindJSON(&component); err != nil {
-        c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-        return
-    }
+	// Try binding either a single object or an array
+	var components []models.Component
 
-    // Validate stage
-    if !component.IsValidStage() {
-        c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid stage. Must be stage1, stage2, stage3, or stage4"})
-        return
-    }
+	// Peek first byte to check if it's an array or object
+	body, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to read request body"})
+		return
+	}
 
-    // Validate input types
-    if !component.ValidateInputTypes() {
-        c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input type. Must be string, int, float, bool, list, dict, or any"})
-        return
-    }
+	// Determine whether input is an array or single object
+	if len(body) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Empty request body"})
+		return
+	}
 
-    // Validate output type
-    if !component.ValidateOutputType() {
-        c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid output type. Must be string, int, float, bool, list, dict, any, or none"})
-        return
-    }
+	if body[0] == '{' {
+		// Single component
+		var single models.Component
+		if err := json.Unmarshal(body, &single); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		components = append(components, single)
+	} else if body[0] == '[' {
+		// Array of components
+		if err := json.Unmarshal(body, &components); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+	} else {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON format"})
+		return
+	}
 
-    // Validate at least one input
-    if len(component.Inputs) == 0 {
-        c.JSON(http.StatusBadRequest, gin.H{"error": "Component must have at least one input"})
-        return
-    }
+	// Validation and insertion
+	var inserted []models.Component
+	for _, component := range components {
+		if !component.IsValidStage() {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid stage. Must be stage1, stage2, stage3, or stage4"})
+			return
+		}
+		if !component.ValidateInputTypes() {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input type. Must be string, int, float, bool, list, dict, or any"})
+			return
+		}
+		if !component.ValidateOutputType() {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid output type. Must be string, int, float, bool, list, dict, any, or none"})
+			return
+		}
+		if len(component.Inputs) == 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Component must have at least one input"})
+			return
+		}
 
-    component.CreatedAt = time.Now()
-    component.UpdatedAt = time.Now()
+		component.CreatedAt = time.Now()
+		component.UpdatedAt = time.Now()
 
-    result, err := h.collection.InsertOne(ctx, component)
-    if err != nil {
-        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-        return
-    }
+		result, err := h.collection.InsertOne(ctx, component)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
 
-    component.ID = result.InsertedID.(primitive.ObjectID)
+		component.ID = result.InsertedID.(primitive.ObjectID)
+		inserted = append(inserted, component)
+	}
 
-    c.JSON(http.StatusCreated, gin.H{
-        "message":   "Component created successfully",
-        "component": component,
-    })
+	c.JSON(http.StatusCreated, gin.H{
+		"message":    fmt.Sprintf("%d component(s) created successfully", len(inserted)),
+		"components": inserted,
+	})
 }
 
 // Update updates a component by ID

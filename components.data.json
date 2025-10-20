@@ -1,0 +1,788 @@
+[
+  {
+    "name": "Remove Duplicates",
+    "description": "Removes duplicate rows from dataset",
+    "code": "def remove_duplicates(data):\n    return data.drop_duplicates()",
+    "language": "python",
+    "stage": "stage1",
+    "tags": ["cleaning", "duplicates", "data-quality"],
+    "inputs": [
+      {
+        "name": "data",
+        "type": "dataframe",
+        "description": "Input DataFrame",
+        "required": true
+      }
+    ],
+    "output": {
+      "type": "dataframe",
+      "description": "DataFrame without duplicate rows"
+    }
+  },
+  {
+    "name": "Handle Missing Values - Drop",
+    "description": "Drops rows containing missing values",
+    "code": "def handle_missing_values_drop(data):\n    return data.dropna()",
+    "language": "python",
+    "stage": "stage1",
+    "tags": ["cleaning", "missing-values", "nan"],
+    "inputs": [
+      {
+        "name": "data",
+        "type": "dataframe",
+        "description": "Input DataFrame with missing values",
+        "required": true
+      }
+    ],
+    "output": {
+      "type": "dataframe",
+      "description": "DataFrame without missing values"
+    }
+  },
+  {
+    "name": "Handle Missing Values - Fill",
+    "description": "Fills missing values using specified strategy",
+    "code": "def handle_missing_values_fill(data, strategy='mean'):\n    if strategy == 'mean':\n        return data.fillna(data.mean())\n    elif strategy == 'median':\n        return data.fillna(data.median())\n    elif strategy == 'mode':\n        return data.fillna(data.mode().iloc[0])\n    return data",
+    "language": "python",
+    "stage": "stage1",
+    "tags": ["cleaning", "imputation", "missing-values"],
+    "inputs": [
+      {
+        "name": "data",
+        "type": "dataframe",
+        "description": "Input DataFrame with missing values",
+        "required": true
+      },
+      {
+        "name": "strategy",
+        "type": "string",
+        "description": "Fill strategy: mean, median, or mode",
+        "required": false,
+        "default_value": "mean"
+      }
+    ],
+    "output": {
+      "type": "dataframe",
+      "description": "DataFrame with filled missing values"
+    }
+  },
+  {
+    "name": "Remove Outliers - IQR",
+    "description": "Removes outliers using Interquartile Range method",
+    "code": "def remove_outliers_iqr(data, column):\n    Q1 = data[column].quantile(0.25)\n    Q3 = data[column].quantile(0.75)\n    IQR = Q3 - Q1\n    lower = Q1 - 1.5 * IQR\n    upper = Q3 + 1.5 * IQR\n    return data[(data[column] >= lower) & (data[column] <= upper)]",
+    "language": "python",
+    "stage": "stage1",
+    "tags": ["outliers", "cleaning", "iqr"],
+    "inputs": [
+      {
+        "name": "data",
+        "type": "dataframe",
+        "description": "Input DataFrame",
+        "required": true
+      },
+      {
+        "name": "column",
+        "type": "string",
+        "description": "Column name to check for outliers",
+        "required": true
+      }
+    ],
+    "output": {
+      "type": "dataframe",
+      "description": "DataFrame without outliers"
+    }
+  },
+  {
+    "name": "Standardization",
+    "description": "Standardizes features to mean=0 and std=1",
+    "code": "from sklearn.preprocessing import StandardScaler\nimport pandas as pd\n\ndef standardization(data):\n    scaler = StandardScaler()\n    return pd.DataFrame(scaler.fit_transform(data), columns=data.columns)",
+    "language": "python",
+    "stage": "stage2",
+    "tags": ["scaling", "normalization", "standardization"],
+    "inputs": [
+      {
+        "name": "data",
+        "type": "dataframe",
+        "description": "Numeric DataFrame to standardize",
+        "required": true
+      }
+    ],
+    "output": {
+      "type": "dataframe",
+      "description": "Standardized DataFrame with mean=0, std=1"
+    }
+  },
+  {
+    "name": "Min-Max Scaling",
+    "description": "Scales features to a specified range (default 0-1)",
+    "code": "from sklearn.preprocessing import MinMaxScaler\nimport pandas as pd\n\ndef min_max_scaling(data, feature_range=(0, 1)):\n    scaler = MinMaxScaler(feature_range=feature_range)\n    return pd.DataFrame(scaler.fit_transform(data), columns=data.columns)",
+    "language": "python",
+    "stage": "stage2",
+    "tags": ["scaling", "normalization", "min-max"],
+    "inputs": [
+      {
+        "name": "data",
+        "type": "dataframe",
+        "description": "Numeric DataFrame to scale",
+        "required": true
+      },
+      {
+        "name": "feature_range",
+        "type": "tuple",
+        "description": "Target range for scaling",
+        "required": false,
+        "default_value": "(0, 1)"
+      }
+    ],
+    "output": {
+      "type": "dataframe",
+      "description": "Scaled DataFrame within specified range"
+    }
+  },
+  {
+    "name": "Robust Scaling",
+    "description": "Scales using median and IQR, robust to outliers",
+    "code": "from sklearn.preprocessing import RobustScaler\nimport pandas as pd\n\ndef robust_scaling(data):\n    scaler = RobustScaler()\n    return pd.DataFrame(scaler.fit_transform(data), columns=data.columns)",
+    "language": "python",
+    "stage": "stage2",
+    "tags": ["scaling", "outliers", "robust"],
+    "inputs": [
+      {
+        "name": "data",
+        "type": "dataframe",
+        "description": "Numeric DataFrame to scale",
+        "required": true
+      }
+    ],
+    "output": {
+      "type": "dataframe",
+      "description": "Robustly scaled DataFrame"
+    }
+  },
+  {
+    "name": "Log Transformation",
+    "description": "Applies logarithmic transformation to reduce skewness",
+    "code": "import numpy as np\n\ndef log_transformation(data):\n    return np.log1p(data)",
+    "language": "python",
+    "stage": "stage2",
+    "tags": ["transformation", "skewness", "log"],
+    "inputs": [
+      {
+        "name": "data",
+        "type": "dataframe",
+        "description": "Numeric DataFrame to transform",
+        "required": true
+      }
+    ],
+    "output": {
+      "type": "dataframe",
+      "description": "Log-transformed DataFrame"
+    }
+  },
+  {
+    "name": "Label Encoding",
+    "description": "Converts categorical labels to numeric codes",
+    "code": "from sklearn.preprocessing import LabelEncoder\n\ndef label_encoding(data, column):\n    encoder = LabelEncoder()\n    data[column] = encoder.fit_transform(data[column])\n    return data",
+    "language": "python",
+    "stage": "stage2",
+    "tags": ["encoding", "categorical", "labels"],
+    "inputs": [
+      {
+        "name": "data",
+        "type": "dataframe",
+        "description": "DataFrame with categorical column",
+        "required": true
+      },
+      {
+        "name": "column",
+        "type": "string",
+        "description": "Column name to encode",
+        "required": true
+      }
+    ],
+    "output": {
+      "type": "dataframe",
+      "description": "DataFrame with encoded column"
+    }
+  },
+  {
+    "name": "One-Hot Encoding",
+    "description": "Creates binary columns for each category",
+    "code": "import pandas as pd\n\ndef one_hot_encoding(data, column):\n    return pd.get_dummies(data, columns=[column], prefix=column)",
+    "language": "python",
+    "stage": "stage2",
+    "tags": ["encoding", "categorical", "one-hot"],
+    "inputs": [
+      {
+        "name": "data",
+        "type": "dataframe",
+        "description": "DataFrame with categorical column",
+        "required": true
+      },
+      {
+        "name": "column",
+        "type": "string",
+        "description": "Column name to encode",
+        "required": true
+      }
+    ],
+    "output": {
+      "type": "dataframe",
+      "description": "DataFrame with one-hot encoded columns"
+    }
+  },
+  {
+    "name": "Create Polynomial Features",
+    "description": "Generates polynomial and interaction features",
+    "code": "from sklearn.preprocessing import PolynomialFeatures\nimport pandas as pd\n\ndef create_polynomial_features(data, degree=2):\n    poly = PolynomialFeatures(degree=degree, include_bias=False)\n    poly_features = poly.fit_transform(data)\n    names = poly.get_feature_names_out(data.columns)\n    return pd.DataFrame(poly_features, columns=names)",
+    "language": "python",
+    "stage": "stage3",
+    "tags": ["feature-engineering", "polynomial", "interactions"],
+    "inputs": [
+      {
+        "name": "data",
+        "type": "dataframe",
+        "description": "Numeric DataFrame",
+        "required": true
+      },
+      {
+        "name": "degree",
+        "type": "int",
+        "description": "Polynomial degree",
+        "required": false,
+        "default_value": 2
+      }
+    ],
+    "output": {
+      "type": "dataframe",
+      "description": "DataFrame with polynomial features"
+    }
+  },
+  {
+    "name": "Create Date Features",
+    "description": "Extracts year, month, day, hour from datetime column",
+    "code": "import pandas as pd\n\ndef create_date_features(data, date_column):\n    data[date_column] = pd.to_datetime(data[date_column])\n    data['year'] = data[date_column].dt.year\n    data['month'] = data[date_column].dt.month\n    data['day'] = data[date_column].dt.day\n    data['day_of_week'] = data[date_column].dt.dayofweek\n    data['hour'] = data[date_column].dt.hour\n    return data",
+    "language": "python",
+    "stage": "stage3",
+    "tags": ["feature-engineering", "datetime", "temporal"],
+    "inputs": [
+      {
+        "name": "data",
+        "type": "dataframe",
+        "description": "DataFrame with datetime column",
+        "required": true
+      },
+      {
+        "name": "date_column",
+        "type": "string",
+        "description": "Name of datetime column",
+        "required": true
+      }
+    ],
+    "output": {
+      "type": "dataframe",
+      "description": "DataFrame with extracted date features"
+    }
+  },
+  {
+    "name": "Text Lowercase",
+    "description": "Converts text to lowercase",
+    "code": "def lowercase_text(text):\n    return text.lower()",
+    "language": "python",
+    "stage": "stage1",
+    "tags": ["text", "nlp", "preprocessing"],
+    "inputs": [
+      {
+        "name": "text",
+        "type": "string",
+        "description": "Input text string",
+        "required": true
+      }
+    ],
+    "output": {
+      "type": "string",
+      "description": "Lowercase text"
+    }
+  },
+  {
+    "name": "Remove Punctuation",
+    "description": "Removes punctuation marks from text",
+    "code": "import re\n\ndef remove_punctuation(text):\n    return re.sub(r'[^\\w\\s]', '', text)",
+    "language": "python",
+    "stage": "stage1",
+    "tags": ["text", "nlp", "cleaning"],
+    "inputs": [
+      {
+        "name": "text",
+        "type": "string",
+        "description": "Input text string",
+        "required": true
+      }
+    ],
+    "output": {
+      "type": "string",
+      "description": "Text without punctuation"
+    }
+  },
+  {
+    "name": "Remove Stopwords",
+    "description": "Removes common stopwords from text",
+    "code": "from nltk.corpus import stopwords\n\ndef remove_stopwords(text, language='english'):\n    stop_words = set(stopwords.words(language))\n    words = text.split()\n    return ' '.join([w for w in words if w.lower() not in stop_words])",
+    "language": "python",
+    "stage": "stage2",
+    "tags": ["text", "nlp", "stopwords"],
+    "inputs": [
+      {
+        "name": "text",
+        "type": "string",
+        "description": "Input text string",
+        "required": true
+      },
+      {
+        "name": "language",
+        "type": "string",
+        "description": "Language for stopwords",
+        "required": false,
+        "default_value": "english"
+      }
+    ],
+    "output": {
+      "type": "string",
+      "description": "Text without stopwords"
+    }
+  },
+  {
+    "name": "PCA Dimensionality Reduction",
+    "description": "Reduces dimensions using Principal Component Analysis",
+    "code": "from sklearn.decomposition import PCA\nimport pandas as pd\n\ndef pca_reduction(data, n_components=2):\n    pca = PCA(n_components=n_components)\n    return pd.DataFrame(pca.fit_transform(data))",
+    "language": "python",
+    "stage": "stage3",
+    "tags": ["dimensionality-reduction", "pca", "feature-selection"],
+    "inputs": [
+      {
+        "name": "data",
+        "type": "dataframe",
+        "description": "Numeric DataFrame",
+        "required": true
+      },
+      {
+        "name": "n_components",
+        "type": "int",
+        "description": "Number of components to keep",
+        "required": false,
+        "default_value": 2
+      }
+    ],
+    "output": {
+      "type": "dataframe",
+      "description": "Reduced DataFrame with n_components columns"
+    }
+  },
+  {
+    "name": "SMOTE Oversampling",
+    "description": "Generates synthetic samples for minority class",
+    "code": "from imblearn.over_sampling import SMOTE\n\ndef oversample_smote(X, y):\n    smote = SMOTE(random_state=42)\n    return smote.fit_resample(X, y)",
+    "language": "python",
+    "stage": "stage3",
+    "tags": ["imbalanced", "oversampling", "smote"],
+    "inputs": [
+      {
+        "name": "X",
+        "type": "dataframe",
+        "description": "Feature DataFrame",
+        "required": true
+      },
+      {
+        "name": "y",
+        "type": "series",
+        "description": "Target labels",
+        "required": true
+      }
+    ],
+    "output": {
+      "type": "tuple",
+      "description": "Resampled X and y"
+    }
+  },
+  {
+    "name": "Create Lag Features",
+    "description": "Creates lagged features for time series",
+    "code": "def create_lag_features(data, column, lags=[1, 2, 3]):\n    for lag in lags:\n        data[f'{column}_lag_{lag}'] = data[column].shift(lag)\n    return data",
+    "language": "python",
+    "stage": "stage3",
+    "tags": ["time-series", "lag", "feature-engineering"],
+    "inputs": [
+      {
+        "name": "data",
+        "type": "dataframe",
+        "description": "Time series DataFrame",
+        "required": true
+      },
+      {
+        "name": "column",
+        "type": "string",
+        "description": "Column name to create lags for",
+        "required": true
+      },
+      {
+        "name": "lags",
+        "type": "list",
+        "description": "List of lag periods",
+        "required": false,
+        "default_value": "[1, 2, 3]"
+      }
+    ],
+    "output": {
+      "type": "dataframe",
+      "description": "DataFrame with lag features"
+    }
+  },
+  {
+    "name": "Rolling Mean Features",
+    "description": "Creates rolling window mean features",
+    "code": "def create_rolling_features(data, column, windows=[7, 14, 30]):\n    for window in windows:\n        data[f'{column}_rolling_mean_{window}'] = data[column].rolling(window).mean()\n    return data",
+    "language": "python",
+    "stage": "stage3",
+    "tags": ["time-series", "rolling", "feature-engineering"],
+    "inputs": [
+      {
+        "name": "data",
+        "type": "dataframe",
+        "description": "Time series DataFrame",
+        "required": true
+      },
+      {
+        "name": "column",
+        "type": "string",
+        "description": "Column name",
+        "required": true
+      },
+      {
+        "name": "windows",
+        "type": "list",
+        "description": "Window sizes",
+        "required": false,
+        "default_value": "[7, 14, 30]"
+      }
+    ],
+    "output": {
+      "type": "dataframe",
+      "description": "DataFrame with rolling mean features"
+    }
+  },
+  {
+    "name": "Isolation Forest Outlier Detection",
+    "description": "Detects outliers using Isolation Forest algorithm",
+    "code": "from sklearn.ensemble import IsolationForest\n\ndef isolation_forest_outliers(data):\n    iso = IsolationForest(contamination=0.1, random_state=42)\n    outliers = iso.fit_predict(data)\n    return data[outliers == 1]",
+    "language": "python",
+    "stage": "stage2",
+    "tags": ["outliers", "anomaly-detection", "isolation-forest"],
+    "inputs": [
+      {
+        "name": "data",
+        "type": "dataframe",
+        "description": "Numeric DataFrame",
+        "required": true
+      }
+    ],
+    "output": {
+      "type": "dataframe",
+      "description": "DataFrame without outliers"
+    }
+  },
+  {
+    "name": "TF-IDF Vectorization",
+    "description": "Converts text to TF-IDF feature vectors",
+    "code": "from sklearn.feature_extraction.text import TfidfVectorizer\n\ndef tfidf_vectorization(text_data):\n    vectorizer = TfidfVectorizer()\n    return vectorizer.fit_transform(text_data)",
+    "language": "python",
+    "stage": "stage3",
+    "tags": ["text", "nlp", "tfidf", "vectorization"],
+    "inputs": [
+      {
+        "name": "text_data",
+        "type": "list",
+        "description": "List of text documents",
+        "required": true
+      }
+    ],
+    "output": {
+      "type": "sparse_matrix",
+      "description": "TF-IDF feature matrix"
+    }
+  },
+  {
+    "name": "K-Means Clustering Features",
+    "description": "Creates cluster labels as features",
+    "code": "from sklearn.cluster import KMeans\n\ndef kmeans_features(data, n_clusters=5):\n    kmeans = KMeans(n_clusters=n_clusters, random_state=42)\n    data['cluster'] = kmeans.fit_predict(data)\n    return data",
+    "language": "python",
+    "stage": "stage3",
+    "tags": ["clustering", "kmeans", "feature-engineering"],
+    "inputs": [
+      {
+        "name": "data",
+        "type": "dataframe",
+        "description": "Numeric DataFrame",
+        "required": true
+      },
+      {
+        "name": "n_clusters",
+        "type": "int",
+        "description": "Number of clusters",
+        "required": false,
+        "default_value": 5
+      }
+    ],
+    "output": {
+      "type": "dataframe",
+      "description": "DataFrame with cluster labels"
+    }
+  },
+  {
+    "name": "Box-Cox Transformation",
+    "description": "Applies Box-Cox transformation to normalize data",
+    "code": "from scipy.stats import boxcox\nimport pandas as pd\nimport numpy as np\n\ndef box_cox_transformation(data):\n    transformed = []\n    for col in data.columns:\n        if (data[col] > 0).all():\n            t_col, _ = boxcox(data[col])\n            transformed.append(t_col)\n        else:\n            transformed.append(data[col])\n    return pd.DataFrame(np.column_stack(transformed), columns=data.columns)",
+    "language": "python",
+    "stage": "stage2",
+    "tags": ["transformation", "box-cox", "normalization"],
+    "inputs": [
+      {
+        "name": "data",
+        "type": "dataframe",
+        "description": "Positive numeric DataFrame",
+        "required": true
+      }
+    ],
+    "output": {
+      "type": "dataframe",
+      "description": "Box-Cox transformed DataFrame"
+    }
+  },
+  {
+    "name": "Target Encoding",
+    "description": "Encodes categories based on target mean",
+    "code": "def target_encoding(data, column, target):\n    means = data.groupby(column)[target].mean()\n    data[column + '_encoded'] = data[column].map(means)\n    return data",
+    "language": "python",
+    "stage": "stage3",
+    "tags": ["encoding", "target", "categorical"],
+    "inputs": [
+      {
+        "name": "data",
+        "type": "dataframe",
+        "description": "DataFrame with categorical column",
+        "required": true
+      },
+      {
+        "name": "column",
+        "type": "string",
+        "description": "Column to encode",
+        "required": true
+      },
+      {
+        "name": "target",
+        "type": "string",
+        "description": "Target column name",
+        "required": true
+      }
+    ],
+    "output": {
+      "type": "dataframe",
+      "description": "DataFrame with target-encoded column"
+    }
+  },
+  {
+    "name": "Binning",
+    "description": "Bins continuous values into discrete categories",
+    "code": "import pandas as pd\n\ndef binning(data, column, bins, labels):\n    data[column + '_binned'] = pd.cut(data[column], bins=bins, labels=labels)\n    return data",
+    "language": "python",
+    "stage": "stage2",
+    "tags": ["binning", "discretization", "feature-engineering"],
+    "inputs": [
+      {
+        "name": "data",
+        "type": "dataframe",
+        "description": "DataFrame with numeric column",
+        "required": true
+      },
+      {
+        "name": "column",
+        "type": "string",
+        "description": "Column to bin",
+        "required": true
+      },
+      {
+        "name": "bins",
+        "type": "list",
+        "description": "Bin edges",
+        "required": true
+      },
+      {
+        "name": "labels",
+        "type": "list",
+        "description": "Bin labels",
+        "required": true
+      }
+    ],
+    "output": {
+      "type": "dataframe",
+      "description": "DataFrame with binned column"
+    }
+  },
+  {
+    "name": "Stemming",
+    "description": "Reduces words to their root form",
+    "code": "from nltk.stem import PorterStemmer\n\ndef stemming(text):\n    stemmer = PorterStemmer()\n    words = text.split()\n    return ' '.join([stemmer.stem(word) for word in words])",
+    "language": "python",
+    "stage": "stage2",
+    "tags": ["text", "nlp", "stemming"],
+    "inputs": [
+      {
+        "name": "text",
+        "type": "string",
+        "description": "Input text",
+        "required": true
+      }
+    ],
+    "output": {
+      "type": "string",
+      "description": "Stemmed text"
+    }
+  },
+  {
+    "name": "Lemmatization",
+    "description": "Converts words to dictionary form",
+    "code": "from nltk.stem import WordNetLemmatizer\n\ndef lemmatization(text):\n    lemmatizer = WordNetLemmatizer()\n    words = text.split()\n    return ' '.join([lemmatizer.lemmatize(word) for word in words])",
+    "language": "python",
+    "stage": "stage2",
+    "tags": ["text", "nlp", "lemmatization"],
+    "inputs": [
+      {
+        "name": "text",
+        "type": "string",
+        "description": "Input text",
+        "required": true
+      }
+    ],
+    "output": {
+      "type": "string",
+      "description": "Lemmatized text"
+    }
+  },
+  {
+    "name": "Fourier Transform",
+    "description": "Applies FFT to extract frequency features",
+    "code": "import numpy as np\n\ndef fourier_transform(data, column):\n    fft_values = np.fft.fft(data[column].values)\n    data[f'{column}_fft_real'] = np.real(fft_values)\n    data[f'{column}_fft_imag'] = np.imag(fft_values)\n    return data",
+    "language": "python",
+    "stage": "stage4",
+    "tags": ["signal-processing", "fft", "frequency"],
+    "inputs": [
+      {
+        "name": "data",
+        "type": "dataframe",
+        "description": "Time series DataFrame",
+        "required": true
+      },
+      {
+        "name": "column",
+        "type": "string",
+        "description": "Column to transform",
+        "required": true
+      }
+    ],
+    "output": {
+      "type": "dataframe",
+      "description": "DataFrame with FFT features"
+    }
+  },
+  {
+    "name": "t-SNE Embedding",
+    "description": "Reduces dimensions using t-SNE for visualization",
+    "code": "from sklearn.manifold import TSNE\n\ndef tsne_embedding(data, n_components=2):\n    tsne = TSNE(n_components=n_components, random_state=42)\n    return tsne.fit_transform(data)",
+    "language": "python",
+    "stage": "stage4",
+    "tags": ["dimensionality-reduction", "tsne", "visualization"],
+    "inputs": [
+      {
+        "name": "data",
+        "type": "dataframe",
+        "description": "High-dimensional DataFrame",
+        "required": true
+      },
+      {
+        "name": "n_components",
+        "type": "int",
+        "description": "Number of dimensions",
+        "required": false,
+        "default_value": 2
+      }
+    ],
+    "output": {
+      "type": "array",
+      "description": "Low-dimensional embedding"
+    }
+  },
+  {
+    "name": "Feature Selection - Correlation",
+    "description": "Removes highly correlated features",
+    "code": "import numpy as np\n\ndef feature_selection_correlation(data, threshold=0.9):\n    corr_matrix = data.corr().abs()\n    upper = corr_matrix.where(np.triu(np.ones(corr_matrix.shape), k=1).astype(bool))\n    to_drop = [col for col in upper.columns if any(upper[col] > threshold)]\n    return data.drop(columns=to_drop)",
+    "language": "python",
+    "stage": "stage3",
+    "tags": ["feature-selection", "correlation", "redundancy"],
+    "inputs": [
+      {
+        "name": "data",
+        "type": "dataframe",
+        "description": "Numeric DataFrame",
+        "required": true
+      },
+      {
+        "name": "threshold",
+        "type": "float",
+        "description": "Correlation threshold",
+        "required": false,
+        "default_value": 0.9
+      }
+    ],
+    "output": {
+      "type": "dataframe",
+      "description": "DataFrame with uncorrelated features"
+    }
+  },
+  {
+    "name": "Haversine Distance",
+    "description": "Calculates distance between geographic coordinates",
+    "code": "import numpy as np\n\ndef haversine_distance(lat1, lon1, lat2, lon2):\n    R = 6371\n    lat1, lon1, lat2, lon2 = map(np.radians, [lat1, lon1, lat2, lon2])\n    dlat = lat2 - lat1\n    dlon = lon2 - lon1\n    a = np.sin(dlat/2)**2 + np.cos(lat1) * np.cos(lat2) * np.sin(dlon/2)**2\n    c = 2 * np.arcsin(np.sqrt(a))\n    return R * c",
+    "language": "python",
+    "stage": "stage3",
+    "tags": ["geographic", "distance", "spatial"],
+    "inputs": [
+      {
+        "name": "lat1",
+        "type": "float",
+        "description": "Latitude of point 1",
+        "required": true
+      },
+      {
+        "name": "lon1",
+        "type": "float",
+        "description": "Longitude of point 1",
+        "required": true
+      },
+      {
+        "name": "lat2",
+        "type": "float",
+        "description": "Latitude of point 2",
+        "required": true
+      },
+      {
+        "name": "lon2",
+        "type": "float",
+        "description": "Longitude of point 2",
+        "required": true
+      }
+    ],
+    "output": {
+      "type": "float",
+      "description": "Distance in kilometers"
+    }
+  }
+]

@@ -60,6 +60,12 @@ const (
     TypeArray   = "array"
     TypeObject  = "object"
     TypeIterable = "iterable"
+    TypeDateTime = "datetime"
+    TypeNdArray   = "ndarray"
+    TypeTensor    = "tensor"
+    TypeFunction  = "function"
+    TypeKerasModel = "keras.model"
+    TypeCallable = "callable"
     TypeNone    = "none"
 )
 
@@ -119,7 +125,7 @@ func (c *Component) GetOptionalInputs() []ComponentInput {
 
 // ValidateInputTypes checks if input types are valid
 func (c *Component) ValidateInputTypes() bool {
-    validTypes := []string{TypeString, TypeInt, TypeFloat, TypeBool, TypeList, TypeDict, TypeDataFrame, TypeSeries, TypeTuple, TypeArray, TypeObject, TypeIterable, TypeAny}
+    validTypes := []string{TypeString, TypeInt, TypeFloat, TypeTensor, TypeBool, TypeList, TypeDict, TypeDataFrame, TypeSeries, TypeTuple, TypeArray, TypeObject, TypeIterable, TypeDateTime, TypeNdArray, TypeFunction, TypeKerasModel, TypeCallable, TypeAny}
     for _, input := range c.Inputs {
         isValid := false
         for _, validType := range validTypes {
@@ -141,7 +147,7 @@ func (c *Component) ValidateOutputType() bool {
     if c.Output == nil {
         return true
     }
-    validTypes := []string{TypeString, TypeInt, TypeFloat, TypeBool, TypeList, TypeDict, TypeAny, TypeNone}
+    validTypes := []string{TypeString, TypeInt, TypeFloat, TypeTensor, TypeBool, TypeList, TypeDict, TypeAny, TypeDataFrame, TypeSeries, TypeTuple, TypeArray, TypeObject, TypeIterable, TypeDateTime, TypeNdArray, TypeNone}
     for _, validType := range validTypes {
         if c.Output.Type == validType {
             return true

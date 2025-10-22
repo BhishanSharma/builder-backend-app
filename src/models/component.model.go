@@ -147,7 +147,7 @@ func (c *Component) ValidateOutputType() bool {
     if c.Output == nil {
         return true
     }
-    validTypes := []string{TypeString, TypeInt, TypeFloat, TypeTensor, TypeBool, TypeList, TypeDict, TypeAny, TypeDataFrame, TypeSeries, TypeTuple, TypeArray, TypeObject, TypeIterable, TypeDateTime, TypeNdArray, TypeNone}
+    validTypes := []string{TypeString, TypeInt, TypeFloat, TypeTensor, TypeBool, TypeList, TypeDict, TypeAny, TypeDataFrame, TypeSeries, TypeTuple, TypeArray, TypeObject, TypeIterable, TypeDateTime, TypeNdArray, TypeFunction, TypeKerasModel, TypeCallable, TypeNone}
     for _, validType := range validTypes {
         if c.Output.Type == validType {
             return true

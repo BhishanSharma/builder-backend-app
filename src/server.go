@@ -4,6 +4,9 @@ import (
     "github.com/gin-gonic/gin"
     "github.com/gin-contrib/cors"
     "time"
+    "log"
+    "context"
+    "builder.ai/src/handlers"
     "builder.ai/src/routes"
     "builder.ai/config"
 )
@@ -11,6 +14,13 @@ import (
 func main() {
     config.ConnectDB()
     config.CreateIndexes()
+
+    // Store the handler first
+    componentHandler := handlers.NewComponentHandler()
+    err := componentHandler.CreateSearchIndexes(context.Background())
+    if err != nil {
+        log.Printf("Warning: Failed to create indexes: %v", err)
+    }
     
     r := gin.Default()
     

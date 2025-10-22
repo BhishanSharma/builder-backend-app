@@ -6,7 +6,10 @@ import (
     "net/http"
     "time"
     "fmt"
+    "strconv"
+    "math"
     "io"
+    "sync"
     "encoding/json"
     "github.com/gin-gonic/gin"
     "go.mongodb.org/mongo-driver/bson"
@@ -324,36 +327,152 @@ func (h *ComponentHandler) Delete(c *gin.Context) {
     })
 }
 
-// SearchByName searches components by name
+// SearchByName searches components by name with pagination and optimizations
 func (h *ComponentHandler) SearchByName(c *gin.Context) {
-    ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+    ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
     defer cancel()
 
+    // Get query parameters
     name := c.Query("name")
     if name == "" {
         c.JSON(http.StatusBadRequest, gin.H{"error": "Name query parameter is required"})
         return
     }
 
+    // Get optional stage filter
+    stage := c.Query("stage")
+
+    // Pagination parameters with defaults
+    page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+    limit, _ := strconv.Atoi(c.DefaultQuery("limit", "50"))
+    
+    // Validate pagination
+    if page < 1 {
+        page = 1
+    }
+    if limit < 1 || limit > 100 {
+        limit = 50
+    }
+    
+    skip := (page - 1) * limit
+
+    // Sort parameter
+    sortBy := c.DefaultQuery("sort", "name")
+    sortOrder := 1
+    if c.Query("order") == "desc" {
+        sortOrder = -1
+    }
+
+    // Build filter - use prefix match for better index usage
+    filter := bson.M{"name": bson.M{"$regex": "^" + name, "$options": "i"}}
+    
+    // Add stage filter if provided
+    if stage != "" {
+        filter["stage"] = stage
+    }
+
+    // Get total count and results in parallel using goroutines
+    var totalCount int64
     var components []models.Component
+    var countErr, findErr error
 
-    filter := bson.M{"name": bson.M{"$regex": name, "$options": "i"}}
-    cursor, err := h.collection.Find(ctx, filter)
-    if err != nil {
-        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+    // Use WaitGroup for parallel execution
+    var wg sync.WaitGroup
+    wg.Add(2)
+
+    // Get count in goroutine
+    go func() {
+        defer wg.Done()
+        totalCount, countErr = h.collection.CountDocuments(ctx, filter)
+    }()
+
+    // Get results in goroutine
+    go func() {
+        defer wg.Done()
+        findOptions := options.Find().
+            SetSkip(int64(skip)).
+            SetLimit(int64(limit)).
+            SetSort(bson.D{{Key: sortBy, Value: sortOrder}}).
+            SetProjection(bson.M{
+                "name":        1,
+                "description": 1,
+                "stage":       1,
+                "inputs":      1,
+                "output":      1,
+                "code":        1,
+            })
+
+        cursor, err := h.collection.Find(ctx, filter, findOptions)
+        if err != nil {
+            findErr = err
+            return
+        }
+        defer cursor.Close(ctx)
+
+        findErr = cursor.All(ctx, &components)
+    }()
+
+    // Wait for both operations to complete
+    wg.Wait()
+
+    // Check for errors
+    if countErr != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to count documents"})
         return
     }
-    defer cursor.Close(ctx)
-
-    if err = cursor.All(ctx, &components); err != nil {
-        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+    if findErr != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to execute search"})
         return
     }
 
+    // Handle empty results
+    if components == nil {
+        components = []models.Component{}
+    }
+
+    // Calculate pagination metadata
+    totalPages := int(math.Ceil(float64(totalCount) / float64(limit)))
+    hasNext := page < totalPages
+    hasPrev := page > 1
+    
+    // Return paginated response
     c.JSON(http.StatusOK, gin.H{
-        "count":      len(components),
-        "components": components,
+        "data": components,
+        "pagination": gin.H{
+            "page":       page,
+            "limit":      limit,
+            "total":      totalCount,
+            "totalPages": totalPages,
+            "hasNext":    hasNext,
+            "hasPrev":    hasPrev,
+        },
     })
+}
+
+// CreateSearchIndexes creates optimized indexes for search
+func (h *ComponentHandler) CreateSearchIndexes(ctx context.Context) error {
+    indexes := []mongo.IndexModel{
+        {
+            Keys: bson.D{
+                {Key: "name", Value: 1},
+            },
+            Options: options.Index().
+                SetName("name_1").
+                SetBackground(true),
+        },
+        {
+            Keys: bson.D{
+                {Key: "stage", Value: 1},
+                {Key: "name", Value: 1},
+            },
+            Options: options.Index().
+                SetName("stage_1_name_1").
+                SetBackground(true),
+        },
+    }
+    
+    _, err := h.collection.Indexes().CreateMany(ctx, indexes)
+    return err
 }
 
 // GetStageStats returns statistics for each stage

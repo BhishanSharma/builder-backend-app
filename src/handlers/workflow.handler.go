@@ -3,6 +3,7 @@ package handlers
 
 import (
     "bytes"
+    "encoding/json"
     "fmt"
     "net/http"
     "os"
@@ -15,6 +16,7 @@ import (
     "go.mongodb.org/mongo-driver/mongo"
 
     "builder.ai/config"
+    "builder.ai/src/utils"
 )
 
 type WorkflowHandler struct {
@@ -39,11 +41,10 @@ type CodeItem struct {
     Variables []Variable `json:"variables"`
 }
 
-// ConcatenateRequest is the request payload for running workflow code
-type ConcatenateRequest struct {
-    Items []CodeItem `json:"items" binding:"required,min=1"`
-}
+// Use WorkflowConfig from utils package
+// type WorkflowConfig = utils.WorkflowConfig (alias, not needed with direct import)
 
+// RunCode handles the workflow execution and code concatenation
 func (h *WorkflowHandler) RunCode(c *gin.Context) {
     var request struct {
         Items []CodeItem `json:"items" binding:"required,min=1"`
@@ -57,15 +58,20 @@ func (h *WorkflowHandler) RunCode(c *gin.Context) {
         return
     }
 
-    projectDir, err := os.Getwd() // get current project directory
+    projectDir, err := os.Getwd()
     if err != nil {
         fmt.Println("Error getting project directory:", err)
-        projectDir = "." // fallback to current directory
+        projectDir = "."
     }
 
+    // Save CSV if provided
     csvFile := filepath.Join(projectDir, fmt.Sprintf("temp/workflow_%d.csv", time.Now().Unix()))
     if request.Data.Schema != "" {
-        err := os.WriteFile(csvFile, []byte(request.Data.Schema), 0644)
+        err := os.MkdirAll(filepath.Dir(csvFile), 0755)
+        if err != nil {
+            fmt.Println("Error creating temp directory:", err)
+        }
+        err = os.WriteFile(csvFile, []byte(request.Data.Schema), 0644)
         if err != nil {
             fmt.Println("Error saving CSV:", err)
         } else {
@@ -73,9 +79,10 @@ func (h *WorkflowHandler) RunCode(c *gin.Context) {
         }
     }
 
-    // Process code items as before...
+    // Process code items
     var codeBlocks []string
     var componentDetails []map[string]interface{}
+    
     for i, item := range request.Items {
         if item.Code == "" {
             c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("Empty code at index %d", i)})
@@ -98,78 +105,203 @@ func (h *WorkflowHandler) RunCode(c *gin.Context) {
     }
 
     concatenatedCode := strings.Join(codeBlocks, "\n\n")
-    output, executionError := executeInDocker(concatenatedCode)
 
-    response := gin.H{
-        "message":           "Code executed successfully",
+    c.JSON(http.StatusOK, gin.H{
+        "message":           "Code concatenated successfully",
         "total_items":       len(request.Items),
         "concatenated_code": concatenatedCode,
         "components":        componentDetails,
         "csv_file":          csvFile,
-        "execution": gin.H{
-            "output": output,
-        },
-    }
-
-    if executionError != nil {
-        response["execution"].(gin.H)["error"] = executionError.Error()
-        response["message"] = "Code execution failed"
-    }
-
-    c.JSON(http.StatusOK, response)
+    })
 }
 
-// executeInDocker runs the Python code in a Docker container without time constraints
+// GenerateExecutableScript generates a complete runnable Python script
+func (h *WorkflowHandler) GenerateExecutableScript(c *gin.Context) {
+    var request struct {
+        WorkflowConfig string `json:"workflow_config" binding:"required"`
+        ComponentCode  string `json:"component_code" binding:"required"`
+    }
+
+    if err := c.ShouldBindJSON(&request); err != nil {
+        fmt.Printf("Error binding JSON: %v\n", err)
+        c.JSON(http.StatusBadRequest, gin.H{
+            "error": fmt.Sprintf("Invalid request: %v", err),
+            "details": "workflow_config and component_code are required fields",
+        })
+        return
+    }
+
+    fmt.Printf("Received workflow_config length: %d\n", len(request.WorkflowConfig))
+    fmt.Printf("Received component_code length: %d\n", len(request.ComponentCode))
+
+    // Parse workflow config
+    var workflow utils.WorkflowConfig
+    err := json.Unmarshal([]byte(request.WorkflowConfig), &workflow)
+    if err != nil {
+        fmt.Printf("Error parsing workflow config: %v\n", err)
+        c.JSON(http.StatusBadRequest, gin.H{
+            "error": "Invalid workflow config JSON",
+            "details": err.Error(),
+        })
+        return
+    }
+
+    fmt.Printf("Parsed workflow: version=%s, nodes=%d\n", workflow.Version, len(workflow.Nodes))
+
+    // Generate executable script
+    script, err := utils.GenerateExecutableScript(workflow, request.ComponentCode)
+    if err != nil {
+        fmt.Printf("Error generating script: %v\n", err)
+        c.JSON(http.StatusInternalServerError, gin.H{
+            "error": "Failed to generate script",
+            "details": err.Error(),
+        })
+        return
+    }
+
+    fmt.Printf("Successfully generated script, length: %d\n", len(script))
+
+    c.JSON(http.StatusOK, gin.H{
+        "script":  script,
+        "message": "Executable script generated successfully",
+    })
+}
+
+// GenerateAndDownloadScript generates script from workflow items
+func (h *WorkflowHandler) GenerateAndDownloadScript(c *gin.Context) {
+    var request struct {
+        Items []CodeItem `json:"items" binding:"required,min=1"`
+        Data  struct {
+            Schema string `json:"schema"`
+        } `json:"data"`
+    }
+
+    if err := c.ShouldBindJSON(&request); err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+        return
+    }
+
+    // Build workflow config from items
+    workflowConfig := utils.WorkflowConfig{
+        Version:    "1.0",
+        ExportedAt: time.Now().Format(time.RFC3339),
+        Nodes:      []utils.Node{},
+    }
+
+    var codeBlocks []string
+    stageNum := 1
+    
+    for i, item := range request.Items {
+        if item.Code == "" {
+            continue
+        }
+
+        // Process variables
+        processedCode := item.Code
+        variablesMap := make(map[string]interface{})
+        
+        for _, variable := range item.Variables {
+            placeholder := fmt.Sprintf("{{%s}}", variable.Name)
+            processedCode = strings.ReplaceAll(processedCode, placeholder, variable.Value)
+            variablesMap[variable.Name] = variable.Value
+        }
+
+        codeBlocks = append(codeBlocks, processedCode)
+
+        // Create node
+        node := utils.Node{
+            ID:        fmt.Sprintf("node_%d", i),
+            Name:      extractFunctionName(item.Code),
+            Stage:     stageNum,
+            Code:      extractFunctionName(item.Code),
+            Variables: variablesMap,
+        }
+
+        workflowConfig.Nodes = append(workflowConfig.Nodes, node)
+        
+        // Increment stage every 2 components (or use your logic)
+        if (i+1)%2 == 0 && stageNum < 4 {
+            stageNum++
+        }
+    }
+
+    concatenatedCode := strings.Join(codeBlocks, "\n\n")
+
+    // Generate executable script
+    script, err := utils.GenerateExecutableScript(workflowConfig, concatenatedCode)
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+        return
+    }
+
+    c.JSON(http.StatusOK, gin.H{
+        "script":            script,
+        "concatenated_code": concatenatedCode,
+        "message":           "Executable script generated successfully",
+        "total_components":  len(request.Items),
+    })
+}
+
+// extractFunctionName extracts function name from Python code
+func extractFunctionName(code string) string {
+    lines := strings.Split(code, "\n")
+    for _, line := range lines {
+        trimmed := strings.TrimSpace(line)
+        if strings.HasPrefix(trimmed, "def ") {
+            // Extract function name
+            parts := strings.Split(trimmed, "(")
+            if len(parts) > 0 {
+                funcName := strings.TrimPrefix(parts[0], "def ")
+                return strings.TrimSpace(funcName)
+            }
+        }
+    }
+    return "unknown_function"
+}
+
+// executeInDocker runs the Python code in a Docker container
 func executeInDocker(code string) (string, error) {
-    // Create temporary directory for code files
     tempDir := "/tmp/code_execution"
     err := os.MkdirAll(tempDir, 0755)
     if err != nil {
         return "", fmt.Errorf("failed to create temp directory: %v", err)
     }
 
-    // Create unique filename with timestamp
     timestamp := time.Now().Unix()
     filename := fmt.Sprintf("script_%d.py", timestamp)
     filepath := filepath.Join(tempDir, filename)
 
-    // Write code to file
     err = os.WriteFile(filepath, []byte(code), 0644)
     if err != nil {
         return "", fmt.Errorf("failed to write code to file: %v", err)
     }
 
-    // Clean up file after execution
     defer os.Remove(filepath)
 
-    // Get Docker image name from environment variable or use default
     dockerImage := os.Getenv("PYTHON_DOCKER_IMAGE")
     if dockerImage == "" {
-        dockerImage = "python:3.11-slim" // Default image
+        dockerImage = "python:3.11-slim"
     }
 
     cmd := exec.Command(
         "docker", "run",
-        "--rm",                                    // Remove container after execution
-        "-v", fmt.Sprintf("%s:/code", tempDir),   // Mount volume
-        "--network", "none",                       // Disable network for security
-        "--memory", "2g",                          // Increased memory limit
-        "--cpus", "2",                             // Increased CPU limit
+        "--rm",
+        "-v", fmt.Sprintf("%s:/code", tempDir),
+        "--network", "none",
+        "--memory", "2g",
+        "--cpus", "2",
         dockerImage,
         "python", fmt.Sprintf("/code/%s", filename),
     )
 
-    // Capture output
     var stdout, stderr bytes.Buffer
     cmd.Stdout = &stdout
     cmd.Stderr = &stderr
 
-    // Start and wait for the command to complete (no timeout)
     if err := cmd.Run(); err != nil {
         return stderr.String(), fmt.Errorf("execution error: %v", err)
     }
 
-    // Combine stdout and stderr
     output := stdout.String()
     if stderr.Len() > 0 {
         output += "\n[STDERR]\n" + stderr.String()

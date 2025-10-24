@@ -12,7 +12,14 @@ func SetupWorkflowRoutes(r *gin.Engine) {
     {
         workflow := api.Group("/workflow")
         {
+            // Original endpoint - returns concatenated code
             workflow.POST("/run", workflowHandler.RunCode)
+            
+            // New endpoint - generates executable script from workflow config + code
+            workflow.POST("/generate-script", workflowHandler.GenerateExecutableScript)
+            
+            // Convenience endpoint - generates script directly from items
+            workflow.POST("/export", workflowHandler.GenerateAndDownloadScript)
         }
     }
 }
